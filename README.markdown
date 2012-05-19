@@ -1,4 +1,4 @@
-# Re-write of d3 demo in CoffeeScript
+# Re-write of d3 demo reel in CoffeeScript
 
 Simply a re-write of [d3 demo reel](http://bl.ocks.org/1256572) in CoffeeScript.
 
