@@ -1,0 +1,16 @@
+{ "name": "foundation"
+, "description": "Node dependencies for foundations"
+, "version": "0.0.1"
+, "author": "mnmly"
+, "repository":
+  { "type": "git"
+  , "url": "http://github.com/mnmly/foundation.git"
+  }
+, "dependencies": {
+    "node-livereload": "git://github.com/mnmly/node-livereload.git"
+  , "coffee-script":  ">=1.2.0"
+  , "nib": "0.3.2"
+  , "stylus": ">=0.24.0"
+  }
+, "engines" : { "node" : ">=0.2.0" }
+}

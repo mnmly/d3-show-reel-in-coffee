@@ -1,0 +1,22 @@
+.chart div {
+  font: 10px sans-serif;
+  background-color: #4682b4;
+  text-align: right;
+  padding: 3px;
+  margin: 1px;
+  color: #fff;
+}
+.chart {
+  margin-left: 42px;
+  font: 10px sans-serif;
+}
+.chart rect,
+.chart circle {
+  stroke: #fff;
+  fill: rgba(102,153,255,0.80);
+}
+.line {
+  fill: none;
+  stroke: #000;
+  stroke-width: 2px;
+}
