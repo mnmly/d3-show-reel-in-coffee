@@ -2,7 +2,7 @@
 (function() {
 
   require.config({
-    baseUrl: '/javascripts',
+    baseUrl: 'javascripts',
     paths: {
       jquery: 'libs/jquery.min',
       backbone: 'libs/backbone-min',
@@ -16,7 +16,7 @@
     priority: ['modernizr', 'underscore', 'jquery']
   });
 
-  require(['app', 'app-01'], function(App, Demo) {
+  require(['app'], function(Demo) {
     return window.demo = new Demo;
   });
 

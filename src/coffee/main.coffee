@@ -1,5 +1,5 @@
 require.config
-  baseUrl: '/javascripts'
+  baseUrl: 'javascripts'
   paths:
     jquery:      'libs/jquery.min'
     backbone:    'libs/backbone-min'
@@ -19,7 +19,6 @@ require.config
 
 require [
   'app'
-  'app-01'
-], (App, Demo)->
+], (Demo)->
   window.demo = new Demo
   

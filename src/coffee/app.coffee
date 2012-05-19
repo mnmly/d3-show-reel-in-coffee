@@ -1,123 +1,345 @@
-define ['d3'], (d3)->
-  ###
-  d3.text 'data/auto_mpg_tmp.csv', (datasetText)->
+define [
+  'd3'
+  'layouts/line'
+  'layouts/horizon'
+  'layouts/area'
+  'layouts/stacked-area'
+  'layouts/stream-graph'
+  'layouts/overlapping-area'
+  'layouts/grouped-bar'
+  'layouts/stacked-bar'
+  'layouts/transpose-bar'
+  'layouts/donut'
+  'layouts/donut-explode'
+  ], ( d3, LineLayout, HorizonLayout, AreaLayout, StackedAreaLayout, StreamGraphLayout, OverlappingAreaLayout, GroupedBarLayout, StackedBarLayout, TransposeBarLayout, DonutLayout, DonutExplode)->
 
-    parsedCSV  = d3.csv.parseRows(datasetText)
-    sampleHTML = d3.select(".container")
-                  .append('table')
-                  .style('border-collapse', 'collapse')
-                  .style('border', '2px black solid')
+  m = [20, 20, 30, 20]
+  w = 960 - m[1] - m[3]
+  h = 500 - m[0] - m[2]
 
-                  .selectAll('tr').data(parsedCSV)
-                  .enter().append('tr')
-                  
-                  .selectAll('td')
-                  .data( (d)-> d ).enter().append('td')
-                  .style('border', '1px solid black')
-                  .style('padding', '5px')
-                  .on('mouseover', -> d3.select(@).style('background-color', 'aliceblue'))
-                  .on('mouseout', -> d3.select(@).style('background-color', 'white'))
-                  .text( ( d ) -> d)
-                  .style('font-size', '12px')
-  
-  data = [
-    [0, 1, 2, 3]
-    [4, 5, 6, 7]
-    [8, 9, 10, 11]
-    [12, 13, 14, 15]
-  ]
-  container = d3.select('.container')
-  table     = container.append('table')
-  tr        = table.selectAll('tr').data(data).enter().append('tr')
-  td        = tr.selectAll('td').data( (d) -> d ).enter()
-                .append('td')
-                .text(String)###
-
-  chartHeight = 300
-  chartWidth  = 500
-  dotRadius   = 10
-
-  data        = [ 4, 8, 15, 16, 23, 42 ]
-  
   class Demo
+
     constructor: ->
-      # Making a chart canvas: svg
-      chart = d3.select( '.container' )
-                .append( 'svg' )
-                .attr('class', 'chart')
-                .attr('width', chartWidth + 30)
-                .attr('height', chartHeight + 15)
-                .append('g')
-                  .attr('transform', 'translate(10, 15)')
-      
-      # Set the scale for x data
-      x = d3.scale.linear()
-        .domain([0, d3.max(data)])
-        .range([0, chartWidth])
+    
+      @xScale        = null
+      @yScale        = null
+      @stocks        = null
+      @symbols       = null
+      @duration      = 1000
+      @delay         = 500
+      @currentLayout = null
 
-      # Set the scale for y data
-      y = d3.scale.ordinal()
-        .domain(data)
-        .rangeBands([0, chartHeight])
+      @color    = d3.scale.category10()
       
-      # Drawing a tick line
-      chart.selectAll('line')
-        .data(x.ticks(10)).enter().append('line')
-          .attr('x1', x)
-          .attr('x2', x)
-          .attr('y1', 0)
-          .attr('y2', chartHeight)
-          .style('stroke', '#ccc')
+      @svg      = @setupCanvas()
+      @line     = @setupLine()
+      @area     = @setupArea()
+      @axis     = @setupAxis()
 
-      # Draws circles
-      circles = chart.selectAll('circle')
-        .data(data).enter().append('circle')
-          .attr('r', dotRadius)
-          #.transition()
-          #.delay((d, i)-> i * 150 * 2)
-          #.duration(500)
-          .attr('cy', (d)-> d3.round( y(d) ) + 10 + .5 )
-          .attr('cx', 0)
-          .transition()
-          .delay((d, i)-> i * 100)
-          .duration(1000)
-          .ease('elastic')
-          .attr('cx', (d)-> d3.round( x(d) ) + .5)
-      # Draws bar
-      ###
-      chart.selectAll('rect')
-        .data(data).enter().append('rect')
-          .attr('y', y)
-          .attr('width', x)
-          .attr('height', y.rangeBand())
-      ###
+      @generators =
+        line: @line
+        area: @area
+        axis:  @axis
+
+      @fetchData()
+
+
+    # setup svg canvas
+    setupCanvas: ->
+
+      d3.select('.row').append('svg')
+        .attr('width', w + m[1] + m[3])
+        .attr('height', h + m[0] + m[2])
+        .append('g')
+          .attr('transform', "translate(#{m[3]}, #{m[0]})")
+    
+    # Setup baseline
+    setupLine: ->
+      d3.svg.line()
+        .interpolate('basis')
+        .x( (d)=> @currentLayout.xScale(d.date))
+        .y( (d)=> @currentLayout.yScale(d.price))
+
+
+    setupArea: ->
+      d3.svg.area()
+        .interpolate('basis')
+        .x( (d) => @currentLayout.xScale(d.date) )
+        .y( (d) => @currentLayout.yScale(d.price) )
+
+    setupAxis: ->
+      d3.svg.line()
+        .interpolate('basis')
+        .x( (d)=> @currentLayout.xScale(d.date) )
+        .y( h )
+
+    fetchData: ->
+
+      d3.csv 'data/stocks.csv', (data)=>
+        
+        parse    = d3.time.format('%b %Y').parse
+        @symbols = d3.nest().key( (d)->d.symbol )
+                    .entries( @stocks = data )
+        
+        # Parse dates and numbers. We assume values are sorted by date.
+        # Also compute the maximum price per symbol, needed for the y-domain.
+
+        @symbols.forEach (s)->
+          s.values.forEach (d)->
+            # Parse the date to convert into Date object
+            d.date  = parse(d.date)
+            d.price = +d.price
+
+          # Find max/min price in the dateset
+          s.maxPrice = d3.max(s.values, ( d )-> d.price )
+          s.sumPrice = d3.sum(s.values, ( d )-> d.price )
+        
+        # Sort by maximum price decending
+        @symbols.sort (a, b)-> b.maxPrice - a.maxPrice
+        
+        # Represent symbol as `<g class='symbol' />`
+        g = @svg.selectAll('g')
+              .data(@symbols).enter().append('g')
+                .attr('class', 'symbol')
+        
+        setTimeout @initLineLayout, @duration
       
-      # Draws the label for bar
-      chart.selectAll('text')
-        .data(data).enter().append('text')
-          .attr('x', x)
-          .attr('y', (d) -> y(d) + y.rangeBand() / 2)
-          #.attr('dx', -3)
-          #.attr('dx', -10)
-          .attr('dy', '.35em')
-          #.attr('text-anchor', 'end')
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .text(String)
+    setupBaseElements: ->
 
-      # Drawing label for tick
-      chart.selectAll('.rule')
-        .data(x.ticks(5)).enter().append('text')
-          .attr('class', 'rule')
-          .attr('x', x)
-          .attr('y', 0)
-          .attr('dy', -3)
-          .attr('text-anchor', 'middle')
-          .text(String)
+      symbolNodes = @svg.selectAll('g')
+            .attr( 'transform', ( d, i )=> "translate(0, #{i * h / 4 + 10})" )
+      
+      symbolNodes.each (d, i, j)=>
+
+        # Get `symbol`:[d3 object]
+        symbol = d3.select( symbolNodes[j][i] ) # same as: d3.select(this)
+
+        # Append a line
+        symbol.append( 'path' )
+          .attr('class', 'line')
+
+        # Append a circle
+        symbol.append( 'circle' )
+          .attr('r', 5)
+          .style('fill', (d) => @color(d.key))
+          .style('stroke', '#000')
+          .style('stroke-width', '2px')
+
+        # Append a label
+        symbol.append( 'text' )
+          .attr("x", 12)
+          .attr('dy', ".31em")
+          .text(d.key)
+  
+    initLineLayout: =>
+      @generators.line = @setupLine()
+      # Start lineLayout after `@duration`
+      @setupBaseElements()
+
+      if @currentLayout
+        @xScale = @currentLayout.xScale
+        @yScale = @currentLayout.yScale
+
+      lineLayout = new LineLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @xScale
+        yScale: @yScale
+        symbols: @symbols
+        generators: @generators
+        color: @color
+        onAnimationEnd: @initHorizonLayout
+
+      @currentLayout = lineLayout
+
+    initHorizonLayout: =>
+
+      console.log "horizonsLayout starts"
+
+      horizonLayout = new HorizonLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initAreaLayout
+
+      @currentLayout = horizonLayout
+
+    initAreaLayout: =>
+      
+      console.log "areasLayout starts"
+
+      areaLayout = new AreaLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initStackedAreaLayout
+
+      @currentLayout = areaLayout
+    
+    initStackedAreaLayout: =>
+      console.log "stackedAreaLayout starts"
+
+      stackedAreaLayout = new StackedAreaLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initStreamGraphLayout
+
+      @currentLayout = stackedAreaLayout
       
 
-      # Draw base line
-      chart.append('line')
-        .attr('y1', 0)
-        .attr('y2', chartHeight)
-        .style('stroke', '#000')
+    initStreamGraphLayout: =>
+
+      console.log "streamGraphLayout starts"
+
+      streamGraphLayout = new StreamGraphLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initOverlappingAreaLayout
+
+      @currentLayout = streamGraphLayout
+
+    initOverlappingAreaLayout: =>
+
+      console.log "overlapping starts"
+
+      overlappingAreaLayout = new OverlappingAreaLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initGroupedBarLayout
+
+      @currentLayout = overlappingAreaLayout
+
+    initGroupedBarLayout: =>
+
+      console.log "groupedBarLayout starts"
+
+      groupedBarLayout = new GroupedBarLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initStackedBarLayout
+
+      @currentLayout = groupedBarLayout
+
+    initStackedBarLayout: =>
+
+      console.log "stackedBarLayout starts"
+
+      stackedBarLayout = new StackedBarLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initTransposeBarLayout
+
+      @currentLayout = stackedBarLayout
+
+    initTransposeBarLayout: =>
+
+      console.log "transposeBarLayout starts"
+
+      transposeBarLayout = new TransposeBarLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initDonutLayout
+
+      @currentLayout = transposeBarLayout
+
+    initDonutLayout: =>
+
+      console.log "donutLayout starts"
+
+      donutLayout = new DonutLayout
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initDonutExplode
+
+      @currentLayout = donutLayout
+
+
+    initDonutExplode: =>
+
+      console.log "donutLayout starts"
+
+      donutExplode = new DonutExplode
+        svg: @svg
+        height: h
+        width: w
+        xScale: @currentLayout.xScale
+        yScale: @currentLayout.yScale
+        symbols: @symbols
+        generators: @generators
+        duration: @duration
+        delay: @delay
+        color: @color
+        onAnimationEnd: @initLineLayout
+
+      @currentLayout = donutExplode
